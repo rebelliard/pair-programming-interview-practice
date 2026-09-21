@@ -1,0 +1,46 @@
+{
+  "exercise": 6,
+  "title": "Room booking",
+  "surface": "backend-api",
+  "kind": "live",
+  "difficulty": "intermediate",
+  "durationMinutes": 50,
+  "gates": [
+    { "id": "open", "at": "0:00", "kind": "gate", "title": "Open the session" },
+    {
+      "id": "read",
+      "at": "2:00",
+      "kind": "gate",
+      "title": "Read the booking route and tests"
+    },
+    {
+      "id": "release-1",
+      "at": "10:00",
+      "kind": "release",
+      "title": "Release 1: create bookings"
+    },
+    {
+      "id": "checkpoint-core",
+      "at": "28:00",
+      "kind": "checkpoint",
+      "title": "Core booking behavior",
+      "expect": "Overlaps reject, back-to-back bookings succeed with 201 and Location",
+      "verify": "pnpm test"
+    },
+    {
+      "id": "release-2",
+      "at": "30:00",
+      "kind": "conditional-release",
+      "title": "Release 2: explain invalid input",
+      "requires": "checkpoint-core"
+    },
+    {
+      "id": "review",
+      "at": "42:00",
+      "kind": "gate",
+      "title": "Self-review; offer grading"
+    },
+    { "id": "end", "at": "50:00", "kind": "stop", "title": "Time is up" }
+  ],
+  "rules": []
+}

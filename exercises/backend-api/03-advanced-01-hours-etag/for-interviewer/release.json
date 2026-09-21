@@ -1,0 +1,11 @@
+{
+  "exerciseId": 7,
+  "status": "ready",
+  "candidateEntry": "for-candidate/README.md",
+  "privatePaths": ["for-interviewer"],
+  "requiredChecks": [
+    "pnpm check",
+    "pnpm exec tsc --project for-interviewer/tsconfig.json",
+    "pnpm exec vitest run --config for-interviewer/vitest.config.ts"
+  ]
+}

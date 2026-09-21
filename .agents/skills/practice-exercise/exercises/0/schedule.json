@@ -1,0 +1,73 @@
+{
+  "exercise": 0,
+  "title": "Shared array",
+  "surface": "full-stack",
+  "kind": "warm-up",
+  "difficulty": "beginner",
+  "durationMinutes": 45,
+  "gates": [
+    { "id": "open", "at": "0:00", "kind": "gate", "title": "Open the session" },
+    {
+      "id": "walkthrough",
+      "at": "2:00",
+      "kind": "gate",
+      "title": "Render-path walkthrough"
+    },
+    {
+      "id": "probes",
+      "at": "6:00",
+      "kind": "gate",
+      "title": "Walkthrough probes"
+    },
+    {
+      "id": "checks",
+      "at": "8:00",
+      "kind": "checkpoint",
+      "title": "Run pnpm check together",
+      "expect": "pnpm check green, four server tests passing, bug still present",
+      "verify": "pnpm check"
+    },
+    {
+      "id": "coaching",
+      "at": "9:30",
+      "kind": "gate",
+      "title": "Coaching pause"
+    },
+    {
+      "id": "implement",
+      "at": "11:00",
+      "kind": "gate",
+      "title": "Start the task: failing test first"
+    },
+    {
+      "id": "checkpoint-red",
+      "at": "22:00",
+      "kind": "checkpoint",
+      "title": "Failing client regression exists",
+      "expect": "a client test in test/client/ asserts the Priority queue order and was red before any fix",
+      "verify": "pnpm test"
+    },
+    {
+      "id": "checkpoint-green",
+      "at": "32:00",
+      "kind": "checkpoint",
+      "title": "Fix in place; five tests green",
+      "expect": "pnpm check green with five tests, including the new client regression",
+      "verify": "pnpm check"
+    },
+    {
+      "id": "handoff",
+      "at": "36:00",
+      "kind": "gate",
+      "title": "Handoff; stop editing"
+    },
+    {
+      "id": "review",
+      "at": "39:00",
+      "kind": "gate",
+      "title": "Self-review; offer grading"
+    },
+    { "id": "end", "at": "45:00", "kind": "stop", "title": "Time is up" }
+  ],
+  "rules": []
+}

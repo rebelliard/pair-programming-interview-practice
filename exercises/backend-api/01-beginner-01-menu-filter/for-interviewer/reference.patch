@@ -1,0 +1,35 @@
+diff --git a/src/menu.ts b/src/menu.ts
+--- a/src/menu.ts
++++ b/src/menu.ts
+@@ -17,3 +17,7 @@
+-  const items = vegetarian
+-    ? menuItems.filter((item) => item.vegetarian)
+-    : menuItems;
++  let items = menuItems;
++
++  if (vegetarian === "true") {
++    items = menuItems.filter((item) => item.vegetarian);
++  } else if (vegetarian === "false") {
++    items = menuItems.filter((item) => !item.vegetarian);
++  }
+diff --git a/test/menu-false.test.ts b/test/menu-false.test.ts
+new file mode 100644
+--- /dev/null
++++ b/test/menu-false.test.ts
+@@ -0,0 +1,16 @@
++import { describe, expect, it } from "vitest";
++import { createMenuResponse, type MenuItem } from "../src/menu";
++
++describe("GET /api/menu", () => {
++  it("returns only non-vegetarian menu items when vegetarian is false", async () => {
++    const response = createMenuResponse(
++      new Request("http://localhost/api/menu?vegetarian=false"),
++    );
++    const body = (await response.json()) as { items: MenuItem[] };
++
++    expect(body.items.map((item) => item.id)).toEqual([
++      "ramen",
++      "steak-frites",
++    ]);
++  });
++});

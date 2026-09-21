@@ -1,0 +1,7 @@
+packages:
+  - "exercises/*/*"
+
+allowBuilds:
+  lefthook: true
+
+minimumReleaseAge: 10080

@@ -1,0 +1,25 @@
+{
+  "name": "pair-programming-interview-practice",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --recursive --if-present build",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test",
+    "format": "biome check --write . && prettier --config .git-hooks/prettierrc.markdown.json --write \"**/*.{md,mdx}\" && pnpm --recursive --if-present format:fix",
+    "format:check": "biome ci . && prettier --config .git-hooks/prettierrc.markdown.json --check \"**/*.{md,mdx}\" && pnpm --recursive --if-present format",
+    "hook:install": "lefthook install",
+    "hook:precommit": "lefthook run pre-commit",
+    "hook:prepush": "lefthook run pre-push",
+    "test": "pnpm --recursive --if-present test",
+    "typecheck": "pnpm --recursive --if-present typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "lefthook": "1.13.6",
+    "prettier": "3.8.3"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "packageManager": "pnpm@12.3.2"
+}

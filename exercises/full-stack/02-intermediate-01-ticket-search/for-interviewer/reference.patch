@@ -1,0 +1,274 @@
+diff --git a/src/client/App.tsx b/src/client/App.tsx
+index a826911..380eb93 100644
+--- a/src/client/App.tsx
++++ b/src/client/App.tsx
+@@ -5,0 +6,3 @@ import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
++import { Checkbox } from "./components/ui/checkbox";
++import { Empty, EmptyTitle } from "./components/ui/empty";
++import { Input } from "./components/ui/input";
+@@ -32,14 +35,10 @@ function TicketQueue({ tickets }: { tickets: Ticket[] }) {
+-        <Table>
+-          <TableHeader>
+-            <TableRow>
+-              <TableHead>Title</TableHead>
+-              <TableHead>Priority</TableHead>
+-            </TableRow>
+-          </TableHeader>
+-          <TableBody>
+-            {tickets.map((ticket) => (
+-              <TableRow key={ticket.id}>
+-                <TableCell>{ticket.title}</TableCell>
+-                <TableCell>
+-                  <Badge>{ticket.priority}</Badge>
+-                </TableCell>
++        {tickets.length === 0 ? (
++          <Empty>
++            <EmptyTitle>No tickets match</EmptyTitle>
++          </Empty>
++        ) : (
++          <Table>
++            <TableHeader>
++              <TableRow>
++                <TableHead>Title</TableHead>
++                <TableHead>Priority</TableHead>
+@@ -47,3 +46,13 @@ function TicketQueue({ tickets }: { tickets: Ticket[] }) {
+-            ))}
+-          </TableBody>
+-        </Table>
++            </TableHeader>
++            <TableBody>
++              {tickets.map((ticket) => (
++                <TableRow key={ticket.id}>
++                  <TableCell>{ticket.title}</TableCell>
++                  <TableCell>
++                    <Badge>{ticket.priority}</Badge>
++                  </TableCell>
++                </TableRow>
++              ))}
++            </TableBody>
++          </Table>
++        )}
+@@ -111,0 +121,38 @@ function PriorityFilter({
++function SearchBox({
++  q,
++  onQueryChange,
++}: {
++  q: string;
++  onQueryChange: (q: string) => void;
++}) {
++  return (
++    <div className={cn("flex", "items-center", "gap-2")}>
++      <Label htmlFor="search">Search</Label>
++      <Input
++        id="search"
++        value={q}
++        onChange={(event) => onQueryChange(event.target.value)}
++      />
++    </div>
++  );
++}
++
++function ResolvedTicketsFilter({
++  includeResolved,
++  onIncludeResolvedChange,
++}: {
++  includeResolved: boolean;
++  onIncludeResolvedChange: (includeResolved: boolean) => void;
++}) {
++  return (
++    <div className={cn("flex", "items-center", "gap-2")}>
++      <Checkbox
++        id="include-resolved"
++        checked={includeResolved}
++        onCheckedChange={(checked) => onIncludeResolvedChange(checked === true)}
++      />
++      <Label htmlFor="include-resolved">Include resolved</Label>
++    </div>
++  );
++}
++
+@@ -112,0 +160 @@ export function App({ api }: { api: Api }) {
++  const [includeResolved, setIncludeResolved] = useState(false);
+@@ -113,0 +162 @@ export function App({ api }: { api: Api }) {
++  const [q, setQuery] = useState("");
+@@ -120,0 +170 @@ export function App({ api }: { api: Api }) {
++        includeResolved: includeResolved ? "true" : undefined,
+@@ -121,0 +172 @@ export function App({ api }: { api: Api }) {
++        q,
+@@ -134 +185 @@ export function App({ api }: { api: Api }) {
+-  }, [api, priority]);
++  }, [api, includeResolved, priority, q]);
+@@ -138 +189,8 @@ export function App({ api }: { api: Api }) {
+-      <PriorityFilter priority={priority} onPriorityChange={setPriority} />
++      <div className={cn("flex", "flex-wrap", "gap-4")}>
++        <SearchBox q={q} onQueryChange={setQuery} />
++        <PriorityFilter priority={priority} onPriorityChange={setPriority} />
++        <ResolvedTicketsFilter
++          includeResolved={includeResolved}
++          onIncludeResolvedChange={setIncludeResolved}
++        />
++      </div>
+diff --git a/src/client/api.ts b/src/client/api.ts
+index 872fc20..776410f 100644
+--- a/src/client/api.ts
++++ b/src/client/api.ts
+@@ -29 +29,5 @@ export function createApi(transport: Transport) {
+-    async listTickets(query: { priority?: string }): Promise<Ticket[]> {
++    async listTickets(query: {
++      includeResolved?: string;
++      priority?: string;
++      q?: string;
++    }): Promise<Ticket[]> {
+diff --git a/src/server/handle.ts b/src/server/handle.ts
+index 5457b8b..940db83 100644
+--- a/src/server/handle.ts
++++ b/src/server/handle.ts
+@@ -30 +30,7 @@ function listTickets(
+-    body: { tickets: queryTickets(repository, { priority }) },
++    body: {
++      tickets: queryTickets(repository, {
++        includeResolved: request.query.includeResolved === "true",
++        priority,
++        q: request.query.q,
++      }),
++    },
+diff --git a/src/server/tickets/query-tickets.ts b/src/server/tickets/query-tickets.ts
+index c68b3cc..1013216 100644
+--- a/src/server/tickets/query-tickets.ts
++++ b/src/server/tickets/query-tickets.ts
+@@ -12 +12,4 @@ function compareByPriority(left: Ticket, right: Ticket): number {
+-  return priorityRank[left.priority] - priorityRank[right.priority];
++  return (
++    priorityRank[left.priority] - priorityRank[right.priority] ||
++    Date.parse(left.updatedAt) - Date.parse(right.updatedAt)
++  );
+@@ -19 +22 @@ export function queryTickets(
+-  const sortedTickets = [...repository.listAll()].sort(compareByPriority);
++  const normalizedQuery = options.q?.trim().toLowerCase() ?? "";
+@@ -21,7 +24,13 @@ export function queryTickets(
+-  if (options.priority) {
+-    return sortedTickets.filter(
+-      (ticket) => ticket.priority === options.priority,
+-    );
+-  }
+-
+-  return sortedTickets;
++  return [...repository.listAll()]
++    .filter((ticket) => options.includeResolved || ticket.status !== "resolved")
++    .filter(
++      (ticket) =>
++        options.priority === undefined || ticket.priority === options.priority,
++    )
++    .filter(
++      (ticket) =>
++        normalizedQuery === "" ||
++        ticket.title.toLowerCase().includes(normalizedQuery) ||
++        ticket.requester.toLowerCase().includes(normalizedQuery),
++    )
++    .sort(compareByPriority);
+diff --git a/src/shared/tickets.ts b/src/shared/tickets.ts
+index 1a6366c..b11d1ec 100644
+--- a/src/shared/tickets.ts
++++ b/src/shared/tickets.ts
+@@ -15,0 +16 @@ export interface QueryOptions {
++  includeResolved?: boolean;
+@@ -16,0 +18 @@ export interface QueryOptions {
++  q?: string;
+diff --git a/test/client/app.test.tsx b/test/client/app.test.tsx
+index a5be474..23b57d2 100644
+--- a/test/client/app.test.tsx
++++ b/test/client/app.test.tsx
+@@ -1 +1,7 @@
+-import { render, screen, waitFor, within } from "@testing-library/react";
++import {
++  cleanup,
++  render,
++  screen,
++  waitFor,
++  within,
++} from "@testing-library/react";
+@@ -3 +9 @@ import userEvent from "@testing-library/user-event";
+-import { describe, expect, it } from "vitest";
++import { afterEach, describe, expect, it } from "vitest";
+@@ -14,0 +21,2 @@ function firstCellsOf(regionName: string): Array<string | undefined> {
++afterEach(cleanup);
++
+@@ -24,2 +31,0 @@ describe("App", () => {
+-      "Payment processor recovered",
+-      "Invoice contains the wrong address",
+@@ -27,2 +33 @@ describe("App", () => {
+-      "Cannot export quarterly report",
+-      "Reset an archived workspace",
++      "Invoice contains the wrong address",
+@@ -29,0 +35 @@ describe("App", () => {
++      "Cannot export quarterly report",
+@@ -37 +42,0 @@ describe("App", () => {
+-      "ticket-6",
+@@ -40 +44,0 @@ describe("App", () => {
+-      "ticket-4",
+@@ -55 +58,0 @@ describe("App", () => {
+-      "Payment processor recovered",
+@@ -57 +60,22 @@ describe("App", () => {
+-    expect(firstCellsOf("Recent activity")).toEqual(["ticket-2", "ticket-6"]);
++    expect(firstCellsOf("Recent activity")).toEqual(["ticket-2"]);
++  });
++
++  it("searches tickets and can include resolved tickets", async () => {
++    const user = userEvent.setup();
++
++    render(<App api={createApi(createInMemoryTransport())} />);
++    await screen.findByRole("cell", { name: "ticket-2" });
++
++    await user.type(
++      screen.getByRole("textbox", { name: /Search/ }),
++      "workspace",
++    );
++    await screen.findByText("No tickets match");
++
++    await user.clear(screen.getByRole("textbox", { name: /Search/ }));
++    await screen.findAllByRole("cell", { name: "ticket-2" });
++    await user.click(
++      screen.getByRole("checkbox", { name: /Include resolved/ }),
++    );
++
++    await screen.findAllByText("Reset an archived workspace");
+diff --git a/test/server/query-tickets.test.ts b/test/server/query-tickets.test.ts
+index bc621ff..0149a22 100644
+--- a/test/server/query-tickets.test.ts
++++ b/test/server/query-tickets.test.ts
+@@ -11,2 +10,0 @@ describe("queryTickets", () => {
+-      "ticket-6",
+-      "ticket-3",
+@@ -14,2 +12 @@ describe("queryTickets", () => {
+-      "ticket-1",
+-      "ticket-4",
++      "ticket-3",
+@@ -16,0 +14 @@ describe("queryTickets", () => {
++      "ticket-1",
+@@ -24 +22,25 @@ describe("queryTickets", () => {
+-    expect(tickets.map(({ id }) => id)).toEqual(["ticket-3", "ticket-7"]);
++    expect(tickets.map(({ id }) => id)).toEqual(["ticket-7", "ticket-3"]);
++  });
++
++  it("finds a ticket by normalized title or requester", () => {
++    const titleMatches = queryTickets(createRepository(), { q: "  LOGIN " });
++    const requesterMatches = queryTickets(createRepository(), {
++      q: "  PRIYA ",
++    });
++
++    expect(titleMatches.map(({ id }) => id)).toEqual(["ticket-2"]);
++    expect(requesterMatches.map(({ id }) => id)).toEqual(["ticket-3"]);
++  });
++
++  it("hides resolved tickets unless requested", () => {
++    const hiddenTickets = queryTickets(createRepository());
++    const visibleTickets = queryTickets(createRepository(), {
++      includeResolved: true,
++    });
++
++    expect(hiddenTickets.some(({ status }) => status === "resolved")).toBe(
++      false,
++    );
++    expect(visibleTickets.some(({ status }) => status === "resolved")).toBe(
++      true,
++    );

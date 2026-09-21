@@ -1,0 +1,71 @@
+{
+  "exercise": 2,
+  "title": "Workspace invite",
+  "surface": "full-stack",
+  "kind": "live",
+  "difficulty": "advanced",
+  "durationMinutes": 50,
+  "gates": [
+    { "id": "open", "at": "0:00", "kind": "gate", "title": "Open the session" },
+    {
+      "id": "read",
+      "at": "2:00",
+      "kind": "gate",
+      "title": "Run the tests; read quietly"
+    },
+    {
+      "id": "orientation",
+      "at": "7:00",
+      "kind": "gate",
+      "title": "Explain the write path; orientation probes"
+    },
+    {
+      "id": "release-1",
+      "at": "10:00",
+      "kind": "release",
+      "title": "Release 1: invite a member"
+    },
+    {
+      "id": "implement",
+      "at": "12:00",
+      "kind": "gate",
+      "title": "Implement the core in tested slices"
+    },
+    {
+      "id": "checkpoint-core",
+      "at": "28:00",
+      "kind": "checkpoint",
+      "title": "Invite form states are wired; coaching pause",
+      "expect": "invite form shows pending, success, and error states with a fresh-read server test",
+      "verify": "pnpm test"
+    },
+    {
+      "id": "release-2",
+      "at": "30:00",
+      "kind": "conditional-release",
+      "title": "Release 2: seat limit",
+      "requires": "checkpoint-core"
+    },
+    {
+      "id": "handoff",
+      "at": "39:00",
+      "kind": "gate",
+      "title": "Handoff; stop editing"
+    },
+    {
+      "id": "review",
+      "at": "42:00",
+      "kind": "gate",
+      "title": "Self-review; offer grading"
+    },
+    { "id": "end", "at": "50:00", "kind": "stop", "title": "Time is up" }
+  ],
+  "rules": [
+    {
+      "id": "stretch",
+      "title": "Optional stretch: accept an invitation",
+      "before": "36:00",
+      "requires": "release-2"
+    }
+  ]
+}

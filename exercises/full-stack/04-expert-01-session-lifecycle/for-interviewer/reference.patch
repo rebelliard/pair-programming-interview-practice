@@ -1,0 +1,352 @@
+diff --git a/src/client/App.tsx b/src/client/App.tsx
+--- a/src/client/App.tsx
++++ b/src/client/App.tsx
+@@ -93,0 +94 @@
++              key={session.id}
+diff --git a/src/client/components/SessionControls.tsx b/src/client/components/SessionControls.tsx
+index 95b69a5..5ed331e 100644
+--- a/src/client/components/SessionControls.tsx
++++ b/src/client/components/SessionControls.tsx
+@@ -1,2 +1,3 @@
+-import type { Command, Session, SessionStatus } from "../../shared/sessions";
+-import { COMMANDS, isTerminal } from "../../shared/transitions";
++import { useState } from "react";
++import type { Command, Session } from "../../shared/sessions";
++import { COMMANDS, canApply } from "../../shared/transitions";
+@@ -4,0 +6 @@ import { cn } from "../lib/utils";
++import { Alert, AlertTitle } from "./ui/alert";
+@@ -19,19 +21,2 @@ function commandLabel(command: Command): string {
+-    default: {
+-      const unreachable: never = command;
+-      throw new Error(`Unhandled command: ${unreachable}`);
+-    }
+-  }
+-}
+-
+-function isCommandEnabled(status: SessionStatus, command: Command): boolean {
+-  switch (command) {
+-    case "start":
+-      return status === "scheduled";
+-    case "pause":
+-      return status === "live";
+-    case "resume":
+-      return !isTerminal(status);
+-    case "end":
+-      return status === "live" || status === "paused";
+-    case "cancel":
+-      return !isTerminal(status);
++    case "reopen":
++      return "Reopen";
+@@ -53,0 +39,2 @@ export function SessionControls({
++  const [message, setMessage] = useState<string | undefined>(undefined);
++
+@@ -57,0 +45 @@ export function SessionControls({
++      setMessage(undefined);
+@@ -58,0 +47 @@ export function SessionControls({
++      return;
+@@ -59,0 +49,4 @@ export function SessionControls({
++
++    setMessage("That action is no longer valid");
++    const fresh = await api.getSession(session.id);
++    onSessionChange(fresh);
+@@ -63,13 +56,20 @@ export function SessionControls({
+-    <div className={cn("flex", "flex-wrap", "gap-2")}>
+-      {COMMANDS.map((command) => (
+-        <Button
+-          key={command}
+-          type="button"
+-          disabled={!isCommandEnabled(session.status, command)}
+-          onClick={() => {
+-            void handleCommand(command);
+-          }}
+-        >
+-          {commandLabel(command)}
+-        </Button>
+-      ))}
++    <div className={cn("grid", "gap-4")}>
++      {message ? (
++        <Alert>
++          <AlertTitle>{message}</AlertTitle>
++        </Alert>
++      ) : null}
++      <div className={cn("flex", "flex-wrap", "gap-2")}>
++        {COMMANDS.map((command) => (
++          <Button
++            key={command}
++            type="button"
++            disabled={!canApply(session.status, command)}
++            onClick={() => {
++              void handleCommand(command);
++            }}
++          >
++            {commandLabel(command)}
++          </Button>
++        ))}
++      </div>
+diff --git a/src/server/sessions/apply-command.ts b/src/server/sessions/apply-command.ts
+index 65804a3..dc08308 100644
+--- a/src/server/sessions/apply-command.ts
++++ b/src/server/sessions/apply-command.ts
+@@ -2 +2 @@ import type { Command, CommandResult, Session } from "../../shared/sessions";
+-import { isTerminal } from "../../shared/transitions";
++import { canApply } from "../../shared/transitions";
+@@ -18,0 +19,4 @@ export function applyCommand(
++  if (!canApply(session.status, command)) {
++    return invalidTransition(session, command);
++  }
++
+@@ -21,3 +24,0 @@ export function applyCommand(
+-      if (session.status !== "scheduled") {
+-        return invalidTransition(session, command);
+-      }
+@@ -26,3 +26,0 @@ export function applyCommand(
+-      if (session.status !== "live") {
+-        return invalidTransition(session, command);
+-      }
+@@ -31,3 +28,0 @@ export function applyCommand(
+-      if (isTerminal(session.status)) {
+-        return invalidTransition(session, command);
+-      }
+@@ -36,3 +30,0 @@ export function applyCommand(
+-      if (session.status !== "live" && session.status !== "paused") {
+-        return invalidTransition(session, command);
+-      }
+@@ -41,3 +32,0 @@ export function applyCommand(
+-      if (isTerminal(session.status)) {
+-        return invalidTransition(session, command);
+-      }
+@@ -44,0 +34,2 @@ export function applyCommand(
++    case "reopen":
++      return { ok: true, session: { ...session, status: "live" } };
+diff --git a/src/shared/sessions.ts b/src/shared/sessions.ts
+index e659910..1531fd8 100644
+--- a/src/shared/sessions.ts
++++ b/src/shared/sessions.ts
+@@ -11 +11,8 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
+-export const COMMANDS = ["start", "pause", "resume", "end", "cancel"] as const;
++export const COMMANDS = [
++  "start",
++  "pause",
++  "resume",
++  "end",
++  "cancel",
++  "reopen",
++] as const;
+diff --git a/src/shared/transitions.ts b/src/shared/transitions.ts
+index 49f8657..816041c 100644
+--- a/src/shared/transitions.ts
++++ b/src/shared/transitions.ts
+@@ -13,0 +14,13 @@ export function isTerminal(status: SessionStatus): boolean {
++
++const legalSources: Record<Command, readonly SessionStatus[]> = {
++  start: ["scheduled"],
++  pause: ["live"],
++  resume: ["paused"],
++  end: ["live", "paused"],
++  cancel: ["scheduled", "live", "paused"],
++  reopen: ["ended"],
++};
++
++export function canApply(status: SessionStatus, command: Command): boolean {
++  return legalSources[command].includes(status);
++}
+diff --git a/test/client/session-controls.test.tsx b/test/client/session-controls.test.tsx
+index 1ac9646..bc2c3cb 100644
+--- a/test/client/session-controls.test.tsx
++++ b/test/client/session-controls.test.tsx
+@@ -5,0 +6,3 @@ import { createApi } from "../../src/client/api";
++import type { ApiRequest, ApiResponse, Transport } from "../../src/shared/api";
++import type { Session, SessionStatus } from "../../src/shared/sessions";
++import { SESSION_STATUSES } from "../../src/shared/sessions";
+@@ -9,0 +13,18 @@ afterEach(cleanup);
++const sessionIds: Record<SessionStatus, string> = {
++  scheduled: "ses-scheduled",
++  live: "ses-live",
++  paused: "ses-paused",
++  ended: "ses-ended",
++  cancelled: "ses-cancelled",
++};
++
++const enabledLabels: Record<SessionStatus, string[]> = {
++  scheduled: ["Start", "Cancel"],
++  live: ["Pause", "End", "Cancel"],
++  paused: ["Resume", "End", "Cancel"],
++  ended: ["Reopen"],
++  cancelled: [],
++};
++
++const commandLabels = ["Start", "Pause", "Resume", "End", "Cancel", "Reopen"];
++
+@@ -32,0 +54,80 @@ describe("SessionControls", () => {
++
++  it.each(SESSION_STATUSES)(
++    "enables the legal buttons for %s",
++    async (status) => {
++      const user = userEvent.setup();
++
++      render(<App api={createApi(createInMemoryTransport())} />);
++      await screen.findByRole("combobox", { name: "Session" });
++      await user.selectOptions(
++        screen.getByRole("combobox", { name: "Session" }),
++        sessionIds[status],
++      );
++      await screen.findByText(status);
++
++      for (const label of commandLabels) {
++        const button = screen.getByRole("button", { name: label });
++
++        if (enabledLabels[status].includes(label)) {
++          expect(button).toBeEnabled();
++        } else {
++          expect(button).toBeDisabled();
++        }
++      }
++    },
++  );
++
++  it("shows an inline alert and refreshes the badge after invalid_transition", async () => {
++    const user = userEvent.setup();
++    const liveSession: Session = {
++      id: "ses-live",
++      presentationId: "presentation-42",
++      status: "live",
++    };
++    const endedSession: Session = { ...liveSession, status: "ended" };
++    let loaded = false;
++    const transport: Transport = async (
++      request: ApiRequest,
++    ): Promise<ApiResponse> => {
++      if (request.method === "GET" && request.path === "/sessions") {
++        return { status: 200, body: { sessions: [liveSession] } };
++      }
++
++      if (request.method === "GET" && request.path === "/sessions/ses-live") {
++        if (!loaded) {
++          loaded = true;
++          return { status: 200, body: { session: liveSession } };
++        }
++
++        return { status: 200, body: { session: endedSession } };
++      }
++
++      if (
++        request.method === "POST" &&
++        request.path === "/sessions/ses-live/commands"
++      ) {
++        return {
++          status: 409,
++          body: {
++            error: {
++              command: "pause",
++              from: "ended",
++              kind: "invalid_transition",
++            },
++          },
++        };
++      }
++
++      return { status: 404, body: { error: "Not found" } };
++    };
++
++    render(<App api={createApi(transport)} />);
++    await screen.findByText("live");
++
++    await user.click(screen.getByRole("button", { name: "Pause" }));
++
++    expect(await screen.findByRole("alert")).toHaveTextContent(
++      "That action is no longer valid",
++    );
++    expect(await screen.findByText("ended")).toBeInTheDocument();
++  });
+diff --git a/test/server/apply-command.test.ts b/test/server/apply-command.test.ts
+index 57f58ca..596fb39 100644
+--- a/test/server/apply-command.test.ts
++++ b/test/server/apply-command.test.ts
+@@ -29,0 +30,19 @@ describe("applyCommand", () => {
++  it.each([
++    ["scheduled", false],
++    ["live", false],
++    ["paused", true],
++    ["ended", false],
++    ["cancelled", false],
++  ] as const)("resume from %s matches the product table", (status, ok) => {
++    if (ok) {
++      expect(applyCommand(sessionIn(status), "resume")).toEqual(
++        accepted("live"),
++      );
++      return;
++    }
++
++    expect(applyCommand(sessionIn(status), "resume")).toEqual(
++      rejected(status, "resume"),
++    );
++  });
++
+@@ -54,0 +74,9 @@ describe("applyCommand", () => {
++
++  it("reopens an ended session and rejects other sources", () => {
++    expect(applyCommand(sessionIn("ended"), "reopen")).toEqual(
++      accepted("live"),
++    );
++    expect(applyCommand(sessionIn("live"), "reopen")).toEqual(
++      rejected("live", "reopen"),
++    );
++  });
+diff --git a/test/server/can-apply.test.ts b/test/server/can-apply.test.ts
+new file mode 100644
+index 0000000..0797aa0
+--- /dev/null
++++ b/test/server/can-apply.test.ts
+@@ -0,0 +1,52 @@
++import { describe, expect, it } from "vitest";
++import {
++  type Command,
++  SESSION_STATUSES,
++  type SessionStatus,
++} from "../../src/shared/sessions";
++import { canApply } from "../../src/shared/transitions";
++
++const baseCommands = [
++  "start",
++  "pause",
++  "resume",
++  "end",
++  "cancel",
++] as const satisfies readonly Command[];
++
++const legalTransitions: Array<[SessionStatus, Command]> = [
++  ["scheduled", "start"],
++  ["scheduled", "cancel"],
++  ["live", "pause"],
++  ["live", "end"],
++  ["live", "cancel"],
++  ["paused", "resume"],
++  ["paused", "end"],
++  ["paused", "cancel"],
++];
++
++const legalKeys = new Set(
++  legalTransitions.map(([status, command]) => `${status}:${command}`),
++);
++
++const cells = SESSION_STATUSES.flatMap((status) =>
++  baseCommands.map((command) => [status, command] as const),
++);
++
++describe("canApply", () => {
++  it.each(cells)("matches the product table for %s → %s", (status, command) => {
++    expect(canApply(status, command)).toBe(
++      legalKeys.has(`${status}:${command}`),
++    );
++  });
++
++  it("allows reopen only from ended", () => {
++    expect(canApply("ended", "reopen")).toBe(true);
++
++    for (const status of SESSION_STATUSES.filter(
++      (sessionStatus) => sessionStatus !== "ended",
++    )) {
++      expect(canApply(status, "reopen")).toBe(false);
++    }
++  });
++});

@@ -1,0 +1,36 @@
+{
+  "name": "pairing-interview-exercise-6",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build",
+    "check": "pnpm format && pnpm typecheck && pnpm test",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+    "format": "biome check .",
+    "format:fix": "biome check --write .",
+    "start": "next start",
+    "test": "vitest run",
+    "test:interviewer": "vitest run --config for-interviewer/vitest.config.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "typecheck:interviewer": "tsc --noEmit --project for-interviewer/tsconfig.json"
+  },
+  "dependencies": {
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "packageManager": "pnpm@12.3.2"
+}

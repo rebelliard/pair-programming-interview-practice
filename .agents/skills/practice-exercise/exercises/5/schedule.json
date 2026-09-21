@@ -1,0 +1,47 @@
+{
+  "exercise": 5,
+  "title": "Menu filter",
+  "surface": "backend-api",
+  "kind": "warm-up",
+  "difficulty": "beginner",
+  "durationMinutes": 45,
+  "gates": [
+    { "id": "open", "at": "0:00", "kind": "gate", "title": "Open the session" },
+    {
+      "id": "read",
+      "at": "2:00",
+      "kind": "gate",
+      "title": "Read the route and tests"
+    },
+    {
+      "id": "implement",
+      "at": "10:00",
+      "kind": "gate",
+      "title": "Write the regression first"
+    },
+    {
+      "id": "checkpoint-red",
+      "at": "22:00",
+      "kind": "checkpoint",
+      "title": "Regression is red",
+      "expect": "A test proves vegetarian=false returns non-vegetarian dishes",
+      "verify": "pnpm test"
+    },
+    {
+      "id": "checkpoint-green",
+      "at": "32:00",
+      "kind": "checkpoint",
+      "title": "Fix is green",
+      "expect": "pnpm check is green and the regression passes",
+      "verify": "pnpm check"
+    },
+    {
+      "id": "review",
+      "at": "39:00",
+      "kind": "gate",
+      "title": "Self-review; offer grading"
+    },
+    { "id": "end", "at": "45:00", "kind": "stop", "title": "Time is up" }
+  ],
+  "rules": []
+}

@@ -1,0 +1,146 @@
+diff --git a/src/bookings.ts b/src/bookings.ts
+--- a/src/bookings.ts
++++ b/src/bookings.ts
+@@ -47,21 +47,100 @@ export function createHandlers({
+   repository,
+   createId,
+ }: CreateBookingDependencies) {
++  const invalidBookingResponse = () =>
++    Response.json(
++      {
++        error: {
++          code: "INVALID_BOOKING",
++          message:
++            "roomId, startsAt, and endsAt must describe a valid interval.",
++        },
++      },
++      { status: 400 },
++    );
++
++  const parseBookingInput = (value: unknown): Omit<Booking, "id"> | null => {
++    if (typeof value !== "object" || value === null) {
++      return null;
++    }
++
++    const { roomId, startsAt, endsAt } = value as Record<string, unknown>;
++
++    if (
++      typeof roomId !== "string" ||
++      roomId.trim() === "" ||
++      typeof startsAt !== "string" ||
++      typeof endsAt !== "string"
++    ) {
++      return null;
++    }
++
++    const startTime = Date.parse(startsAt);
++    const endTime = Date.parse(endsAt);
++
++    if (
++      Number.isNaN(startTime) ||
++      Number.isNaN(endTime) ||
++      startTime >= endTime
++    ) {
++      return null;
++    }
++
++    return { roomId, startsAt, endsAt };
++  };
++
++  const overlaps = (
++    existing: Booking,
++    incoming: Omit<Booking, "id">,
++  ): boolean =>
++    Date.parse(existing.startsAt) < Date.parse(incoming.endsAt) &&
++    Date.parse(incoming.startsAt) < Date.parse(existing.endsAt);
++
+   return {
+     async POST(request: Request): Promise<Response> {
+-      void request;
+-      void repository;
+-      void createId;
+-
+-      return Response.json(
+-        {
+-          error: {
+-            code: "NOT_IMPLEMENTED",
+-            message: "Booking creation is not available yet.",
++      let value: unknown;
++
++      try {
++        value = await request.json();
++      } catch {
++        return invalidBookingResponse();
++      }
++
++      const bookingInput = parseBookingInput(value);
++
++      if (bookingInput === null) {
++        return invalidBookingResponse();
++      }
++
++      const hasConflict = repository
++        .list()
++        .some(
++          (existingBooking) =>
++            existingBooking.roomId === bookingInput.roomId &&
++            overlaps(existingBooking, bookingInput),
++        );
++
++      if (hasConflict) {
++        return Response.json(
++          {
++            error: {
++              code: "BOOKING_CONFLICT",
++              message: "The room is already booked for that interval.",
++            },
+           },
++          { status: 409 },
++        );
++      }
++
++      const booking = { id: createId(), ...bookingInput };
++      repository.insert(booking);
++
++      return Response.json(booking, {
++        status: 201,
++        headers: {
++          Location: `/api/bookings/${booking.id}`,
+         },
+-        { status: 501 },
+-      );
++      });
+     },
+ 
+     async DELETE(
+@@ -69,17 +148,21 @@ export function createHandlers({
+       context: DeleteBookingContext,
+     ): Promise<Response> {
+       void request;
+-      void context;
++      const { bookingId } = await context.params;
+ 
+-      return Response.json(
+-        {
+-          error: {
+-            code: "NOT_IMPLEMENTED",
+-            message: "Booking deletion is not available yet.",
++      if (!repository.remove(bookingId)) {
++        return Response.json(
++          {
++            error: {
++              code: "BOOKING_NOT_FOUND",
++              message: "The booking does not exist.",
++            },
+           },
+-        },
+-        { status: 501 },
+-      );
++          { status: 404 },
++        );
++      }
++
++      return new Response(null, { status: 204 });
+     },
+   };
+ }

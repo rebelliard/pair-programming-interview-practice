@@ -1,0 +1,46 @@
+{
+  "exercise": 8,
+  "title": "Scan cursor",
+  "surface": "backend-api",
+  "kind": "live",
+  "difficulty": "advanced",
+  "durationMinutes": 50,
+  "gates": [
+    { "id": "open", "at": "0:00", "kind": "gate", "title": "Open the session" },
+    {
+      "id": "read",
+      "at": "2:00",
+      "kind": "gate",
+      "title": "Trace the scan page boundary"
+    },
+    {
+      "id": "release-1",
+      "at": "10:00",
+      "kind": "release",
+      "title": "Release 1: stable scan pagination"
+    },
+    {
+      "id": "checkpoint-core",
+      "at": "28:00",
+      "kind": "checkpoint",
+      "title": "Cursor page boundary",
+      "expect": "The next page neither duplicates nor skips after an intervening scan",
+      "verify": "pnpm test"
+    },
+    {
+      "id": "release-2",
+      "at": "30:00",
+      "kind": "conditional-release",
+      "title": "Release 2: reject malformed cursor input",
+      "requires": "checkpoint-core"
+    },
+    {
+      "id": "review",
+      "at": "42:00",
+      "kind": "gate",
+      "title": "Self-review; offer grading"
+    },
+    { "id": "end", "at": "50:00", "kind": "stop", "title": "Time is up" }
+  ],
+  "rules": []
+}

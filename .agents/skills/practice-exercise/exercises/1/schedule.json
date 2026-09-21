@@ -1,0 +1,85 @@
+{
+  "exercise": 1,
+  "title": "Ticket search",
+  "surface": "full-stack",
+  "kind": "live",
+  "difficulty": "intermediate",
+  "durationMinutes": 50,
+  "gates": [
+    { "id": "open", "at": "0:00", "kind": "gate", "title": "Open the session" },
+    {
+      "id": "walkthrough",
+      "at": "2:00",
+      "kind": "gate",
+      "title": "Starting-code walkthrough"
+    },
+    {
+      "id": "probes",
+      "at": "7:00",
+      "kind": "gate",
+      "title": "Walkthrough probes"
+    },
+    {
+      "id": "checks",
+      "at": "9:00",
+      "kind": "checkpoint",
+      "title": "Run pnpm check together",
+      "expect": "pnpm check green, five tests passing",
+      "verify": "pnpm check"
+    },
+    {
+      "id": "coaching",
+      "at": "11:00",
+      "kind": "gate",
+      "title": "Coaching pause"
+    },
+    {
+      "id": "release-1",
+      "at": "12:30",
+      "kind": "release",
+      "title": "Release 1: search"
+    },
+    {
+      "id": "implement",
+      "at": "14:00",
+      "kind": "gate",
+      "title": "Implement in tested slices"
+    },
+    {
+      "id": "checkpoint-search",
+      "at": "27:00",
+      "kind": "checkpoint",
+      "title": "Search works end to end with a client test",
+      "expect": "search works end to end with a candidate client test",
+      "verify": "pnpm test"
+    },
+    {
+      "id": "release-2",
+      "at": "29:00",
+      "kind": "conditional-release",
+      "title": "Release 2: resolved-ticket visibility",
+      "requires": "checkpoint-search"
+    },
+    {
+      "id": "handoff",
+      "at": "39:00",
+      "kind": "gate",
+      "title": "Handoff; stop editing"
+    },
+    {
+      "id": "review",
+      "at": "42:00",
+      "kind": "gate",
+      "title": "Self-review; offer grading"
+    },
+    { "id": "end", "at": "50:00", "kind": "stop", "title": "Time is up" }
+  ],
+  "rules": [
+    {
+      "id": "stretch",
+      "title": "Optional stretch: oldest ticket first",
+      "before": "35:00",
+      "requires": "release-2"
+    }
+  ]
+}

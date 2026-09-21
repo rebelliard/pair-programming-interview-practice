@@ -1,0 +1,225 @@
+diff --git a/src/client/App.tsx b/src/client/App.tsx
+index 8345f72..88681aa 100644
+--- a/src/client/App.tsx
++++ b/src/client/App.tsx
+@@ -1 +1 @@
+-import { useEffect, useState } from "react";
++import { useEffect, useRef, useState } from "react";
+@@ -19,0 +20,2 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
++    case "already_delivered":
++      return <Badge variant="outline">Already delivered</Badge>;
+@@ -32,0 +35,2 @@ export function App({ api }: { api: Api }) {
++  const [pendingDeliveryIds, setPendingDeliveryIds] = useState<string[]>([]);
++  const abortControllers = useRef(new Set<AbortController>());
+@@ -48,0 +53,3 @@ export function App({ api }: { api: Api }) {
++      for (const controller of abortControllers.current) {
++        controller.abort();
++      }
+@@ -52,2 +59,8 @@ export function App({ api }: { api: Api }) {
+-  async function handleRetry(id: string): Promise<void> {
+-    const delivery = await api.retryDelivery(id);
++  async function handleRetry(delivery: Delivery): Promise<void> {
++    if (pendingDeliveryIds.includes(delivery.id)) {
++      return;
++    }
++
++    const controller = new AbortController();
++    abortControllers.current.add(controller);
++    setPendingDeliveryIds((ids) => [...ids, delivery.id]);
+@@ -55,5 +68,29 @@ export function App({ api }: { api: Api }) {
+-    setDeliveries((currentDeliveries) =>
+-      currentDeliveries.map((currentDelivery) =>
+-        currentDelivery.id === delivery.id ? delivery : currentDelivery,
+-      ),
+-    );
++    try {
++      const nextDelivery = await api.retryDelivery(
++        delivery.id,
++        delivery.event.id,
++        controller.signal,
++      );
++
++      if (!controller.signal.aborted) {
++        setDeliveries((currentDeliveries) =>
++          currentDeliveries.map((currentDelivery) =>
++            currentDelivery.id === nextDelivery.id
++              ? nextDelivery
++              : currentDelivery,
++          ),
++        );
++      }
++    } catch (error) {
++      if (!controller.signal.aborted) {
++        throw error;
++      }
++    } finally {
++      abortControllers.current.delete(controller);
++
++      if (!controller.signal.aborted) {
++        setPendingDeliveryIds((ids) =>
++          ids.filter((pendingId) => pendingId !== delivery.id),
++        );
++      }
++    }
+@@ -87 +124,4 @@ export function App({ api }: { api: Api }) {
+-                    <Button onClick={() => void handleRetry(delivery.id)}>
++                    <Button
++                      disabled={pendingDeliveryIds.includes(delivery.id)}
++                      onClick={() => void handleRetry(delivery)}
++                    >
+diff --git a/src/client/api.ts b/src/client/api.ts
+index 749ed2a..8695211 100644
+--- a/src/client/api.ts
++++ b/src/client/api.ts
+@@ -46 +46,5 @@ export function createApi(transport: Transport) {
+-    async retryDelivery(id: string): Promise<Delivery> {
++    async retryDelivery(
++      id: string,
++      idempotencyKey: string,
++      signal: AbortSignal,
++    ): Promise<Delivery> {
+@@ -51 +55,2 @@ export function createApi(transport: Transport) {
+-        headers: {},
++        headers: { "idempotency-key": idempotencyKey },
++        signal,
+diff --git a/src/server/webhooks/build-request.ts b/src/server/webhooks/build-request.ts
+index ff1f6a5..7e7474c 100644
+--- a/src/server/webhooks/build-request.ts
++++ b/src/server/webhooks/build-request.ts
+@@ -15,0 +16 @@ export function buildRequest(
++      "idempotency-key": event.id,
+diff --git a/src/server/webhooks/classify-attempt.ts b/src/server/webhooks/classify-attempt.ts
+index ce77095..1c37a62 100644
+--- a/src/server/webhooks/classify-attempt.ts
++++ b/src/server/webhooks/classify-attempt.ts
+@@ -18,0 +19,4 @@ export function classifyAttempt(
++  if (response.status === 409) {
++    return "already_delivered";
++  }
++
+diff --git a/src/server/webhooks/deliver-event.ts b/src/server/webhooks/deliver-event.ts
+index a4b05b7..d9a6588 100644
+--- a/src/server/webhooks/deliver-event.ts
++++ b/src/server/webhooks/deliver-event.ts
+@@ -0,0 +1 @@
++import type { RetryPolicy, WebhookResponse } from "../../shared/webhooks";
+@@ -4,0 +6,16 @@ import type { DeliverEventInput, DeliveryResult, Dependencies } from "./types";
++function nextDelay(
++  policy: RetryPolicy,
++  failedAttempt: number,
++  response: WebhookResponse,
++): number {
++  if (response.kind === "http" && response.status === 429) {
++    const retryAfter = response.headers["retry-after"];
++
++    if (retryAfter !== undefined && /^\d+$/.test(retryAfter)) {
++      return Number(retryAfter) * 1000;
++    }
++  }
++
++  return policy.baseDelayMs * 2 ** (failedAttempt - 1);
++}
++
+@@ -10,14 +27,30 @@ export async function deliverEvent(
+-  const response = await dependencies.client.send(request);
+-  const attempts = [response];
+-  const classification = classifyAttempt(response);
+-
+-  switch (classification) {
+-    case "delivered":
+-      return { status: "delivered", attempts };
+-    case "rejected":
+-      return { status: "rejected", attempts };
+-    case "retryable":
+-      return { status: "exhausted", attempts };
+-    default: {
+-      const unreachable: never = classification;
+-      throw new Error(`Unhandled attempt classification: ${unreachable}`);
++  const attempts: WebhookResponse[] = [];
++
++  for (
++    let attempt = 1;
++    attempt <= dependencies.policy.maxAttempts;
++    attempt += 1
++  ) {
++    const response = await dependencies.client.send(request);
++    attempts.push(response);
++    const classification = classifyAttempt(response);
++
++    switch (classification) {
++      case "delivered":
++        return { status: "delivered", attempts };
++      case "already_delivered":
++        return { status: "already_delivered", attempts };
++      case "rejected":
++        return { status: "rejected", attempts };
++      case "retryable":
++        break;
++      default: {
++        const unreachable: never = classification;
++        throw new Error(`Unhandled attempt classification: ${unreachable}`);
++      }
++    }
++
++    if (attempt < dependencies.policy.maxAttempts) {
++      await dependencies.sleep(
++        nextDelay(dependencies.policy, attempt, response),
++      );
+@@ -25,0 +59,2 @@ export async function deliverEvent(
++
++  return { status: "exhausted", attempts };
+diff --git a/src/shared/webhooks.ts b/src/shared/webhooks.ts
+index 8c5b81f..d2b05c8 100644
+--- a/src/shared/webhooks.ts
++++ b/src/shared/webhooks.ts
+@@ -37 +37,5 @@ export interface WebhookClient {
+-export type AttemptClassification = "delivered" | "retryable" | "rejected";
++export type AttemptClassification =
++  | "delivered"
++  | "already_delivered"
++  | "retryable"
++  | "rejected";
+@@ -39 +43,5 @@ export type AttemptClassification = "delivered" | "retryable" | "rejected";
+-export type DeliveryStatus = "delivered" | "rejected" | "exhausted";
++export type DeliveryStatus =
++  | "delivered"
++  | "already_delivered"
++  | "rejected"
++  | "exhausted";
+diff --git a/test/server/deliver-event.test.ts b/test/server/deliver-event.test.ts
+index 8d9483f..895564e 100644
+--- a/test/server/deliver-event.test.ts
++++ b/test/server/deliver-event.test.ts
+@@ -21,0 +22 @@ describe("deliverEvent", () => {
++    expect(client.calls[0]?.headers["idempotency-key"]).toBe("evt-1");
+@@ -43 +44 @@ describe("deliverEvent", () => {
+-  it("exhausts after one retryable response", async () => {
++  it("exhausts after the retry budget is used", async () => {
+@@ -45,0 +47,2 @@ describe("deliverEvent", () => {
++      httpResponse(503),
++      httpResponse(503),
+@@ -55 +58 @@ describe("deliverEvent", () => {
+-      attempts: [httpResponse(503)],
++      attempts: [httpResponse(503), httpResponse(503), httpResponse(503)],
+@@ -57,2 +60,2 @@ describe("deliverEvent", () => {
+-    expect(client.calls).toHaveLength(1);
+-    expect(sleeper.delays).toEqual([]);
++    expect(client.calls).toHaveLength(3);
++    expect(sleeper.delays).toEqual([100, 200]);
+diff --git a/test/server/handle.test.ts b/test/server/handle.test.ts
+index f2211a8..8492fbc 100644
+--- a/test/server/handle.test.ts
++++ b/test/server/handle.test.ts
+@@ -31 +31,5 @@ describe("delivery handler", () => {
+-    const { dependencies } = createDependencies([httpResponse(503)]);
++    const { dependencies } = createDependencies([
++      httpResponse(503),
++      httpResponse(503),
++      httpResponse(503),
++    ]);
+@@ -46 +50 @@ describe("delivery handler", () => {
+-        delivery: { id: "dlv-2", status: "exhausted", attempts: 1 },
++        delivery: { id: "dlv-2", status: "exhausted", attempts: 3 },
+@@ -50 +54 @@ describe("delivery handler", () => {
+-      attempts: 1,
++      attempts: 3,

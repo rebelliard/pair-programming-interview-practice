@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+dist/
+coverage/
+*-candidate.tar.gz
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.cursor/hooks/state/
+lefthook-local.yml

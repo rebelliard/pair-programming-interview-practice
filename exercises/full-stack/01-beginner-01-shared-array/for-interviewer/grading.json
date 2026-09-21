@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "typecheckConfig": "for-interviewer/tsconfig.json",
+  "vitestConfig": "for-interviewer/vitest.config.ts",
+  "releases": [
+    {
+      "id": "regression",
+      "label": "Warm-up: Priority queue keeps server order",
+      "filter": "regression.acceptance"
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+--- a/src/scans/handler.ts
++++ b/src/scans/handler.ts
+@@ -1,12 +1,67 @@
+-import { createScanStore } from "./store";
++import { decodeCursor, encodeCursor } from "./cursor";
++import { compareEvents, createScanStore } from "./store";
+ import type { ScanEvent, ScanKind, ScanStore, ScansHandler } from "./types";
+ 
+ const defaultPageSize = 2;
++const maximumPageSize = 50;
+ 
++class RequestInputError extends Error {
++  constructor(readonly code: string) {
++    super(code);
++  }
++}
++
++function errorResponse(code: string): Response {
++  return Response.json({ error: { code } }, { status: 400 });
++}
++
++function readSingleQueryValue(
++  searchParams: URLSearchParams,
++  name: string,
++): string | undefined {
++  const values = searchParams.getAll(name);
++
++  if (values.length > 1) {
++    throw new RequestInputError("repeated_query_parameter");
++  }
++
++  return values[0];
++}
++
++function parseLimit(value: string | undefined): number {
++  if (value === undefined) {
++    return defaultPageSize;
++  }
++
++  if (!/^[1-9]\d*$/.test(value)) {
++    throw new RequestInputError("invalid_limit");
++  }
++
++  const limit = Number(value);
++
++  if (limit > maximumPageSize) {
++    throw new RequestInputError("invalid_limit");
++  }
++
++  return limit;
++}
++
+ function isScanKind(value: unknown): value is ScanKind {
+   return value === "billing" || value === "security";
+ }
+ 
++function parseKind(value: string | undefined): ScanKind | null {
++  if (value === undefined) {
++    return null;
++  }
++
++  if (!isScanKind(value)) {
++    throw new RequestInputError("invalid_kind");
++  }
++
++  return value;
++}
++
+ function parseEvent(value: unknown): ScanEvent {
+   if (
+     typeof value !== "object" ||
+@@ -19,7 +74,7 @@
+     typeof value.timestamp !== "string" ||
+     Number.isNaN(Date.parse(value.timestamp))
+   ) {
+-    throw new Error("Invalid scan event");
++    throw new RequestInputError("invalid_event");
+   }
+ 
+   return {
+@@ -34,20 +89,71 @@
+ ): ScansHandler {
+   return {
+     GET(request) {
+-      const url = new URL(request.url);
+-      const offset = Number(url.searchParams.get("offset") ?? "0");
+-      const limit = Number(url.searchParams.get("limit") ?? defaultPageSize);
+-      const events = store.list().slice(offset, offset + limit);
+-      const nextOffset =
+-        events.length === limit && offset + events.length < store.list().length
+-          ? offset + events.length
+-          : null;
++      try {
++        const url = new URL(request.url);
++        const cursorValue = readSingleQueryValue(url.searchParams, "cursor");
++        const limit = parseLimit(
++          readSingleQueryValue(url.searchParams, "limit"),
++        );
++        const kind = parseKind(readSingleQueryValue(url.searchParams, "kind"));
++        let cursor = null;
+ 
+-      return Response.json({ events, nextOffset });
++        if (cursorValue !== undefined) {
++          try {
++            cursor = decodeCursor(cursorValue);
++          } catch {
++            throw new RequestInputError("invalid_cursor");
++          }
++
++          if (cursor.kind !== kind) {
++            throw new RequestInputError("cursor_filter_mismatch");
++          }
++        }
++
++        const eligibleEvents = store.list().filter((event) => {
++          if (kind !== null && event.kind !== kind) {
++            return false;
++          }
++
++          return cursor === null || compareEvents(event, cursor) > 0;
++        });
++        const events = eligibleEvents.slice(0, limit);
++        const lastEvent = events.at(-1);
++        const nextCursor =
++          lastEvent !== undefined && eligibleEvents.length > events.length
++            ? encodeCursor({
++                id: lastEvent.id,
++                kind,
++                timestamp: lastEvent.timestamp,
++              })
++            : null;
++
++        return Response.json({ events, nextCursor });
++      } catch (error) {
++        if (error instanceof RequestInputError) {
++          return errorResponse(error.code);
++        }
++
++        throw error;
++      }
+     },
+     async POST(request) {
+-      const event = parseEvent(await request.json());
++      let body: unknown;
+ 
++      try {
++        body = await request.json();
++      } catch {
++        return errorResponse("invalid_json");
++      }
++
++      let event: ScanEvent;
++
++      try {
++        event = parseEvent(body);
++      } catch {
++        return errorResponse("invalid_event");
++      }
++
+       store.insert(event);
+       return Response.json({ event }, { status: 201 });
+     },
+--- a/test/scans/handler.test.ts
++++ b/test/scans/handler.test.ts
+@@ -3,35 +3,25 @@
+ import { createScanStore } from "../../src/scans/store";
+ import type { ScanEvent } from "../../src/scans/types";
+ 
+-interface OffsetPage {
++interface CursorPage {
+   events: ScanEvent[];
+-  nextOffset: number | null;
++  nextCursor: string | null;
+ }
+ 
+-describe("scans handler starter behavior", () => {
+-  it("returns a sorted offset page", async () => {
++describe("scans handler", () => {
++  it("returns a sorted cursor page", async () => {
+     const handler = createScansHandler(createScanStore());
+     const response = handler.GET(
+-      new Request("http://localhost/api/scans?offset=0&limit=2"),
++      new Request("http://localhost/api/scans?limit=2"),
+     );
+ 
+     expect(response.status).toBe(200);
+-    const page = (await response.json()) as OffsetPage;
+-    expect(page).toEqual({
+-      events: [
+-        {
+-          id: "scan-06",
+-          kind: "security",
+-          timestamp: "2026-03-12T10:04:00.000Z",
+-        },
+-        {
+-          id: "scan-05",
+-          kind: "billing",
+-          timestamp: "2026-03-12T10:03:00.000Z",
+-        },
+-      ],
+-      nextOffset: 2,
+-    });
++    const page = (await response.json()) as CursorPage;
++    expect(page.events.map((event) => event.id)).toEqual([
++      "scan-06",
++      "scan-05",
++    ]);
++    expect(page.nextCursor).toEqual(expect.any(String));
+   });
+ 
+   it("inserts a valid event through POST", async () => {

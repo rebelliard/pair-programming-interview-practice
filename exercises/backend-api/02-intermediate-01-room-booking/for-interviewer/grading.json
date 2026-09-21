@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "typecheckConfig": "for-interviewer/tsconfig.json",
+  "vitestConfig": "for-interviewer/vitest.config.ts",
+  "releases": [
+    {
+      "id": "core",
+      "label": "Release 1: create bookings",
+      "filter": "core.acceptance"
+    },
+    {
+      "id": "extension",
+      "label": "Release 2: explain invalid input",
+      "filter": "extension.acceptance"
+    },
+    {
+      "id": "stretch",
+      "label": "Optional stretch: delete a booking",
+      "filter": "stretch.acceptance"
+    }
+  ]
+}

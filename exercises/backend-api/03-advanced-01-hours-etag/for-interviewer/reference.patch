@@ -1,0 +1,125 @@
+--- a/src/hours-handler.ts
++++ b/src/hours-handler.ts
+@@ -1,23 +1,110 @@
+-import type { HoursStore } from './hours-store';
++import { hash } from './hash';
++import type { Hours, HoursStore } from './hours-store';
+ 
+ export type HoursHandler = {
+   get: (request: Request) => Promise<Response>;
+   put: (request: Request) => Promise<Response>;
+ };
+ 
+-export function createHoursHandler(_store: HoursStore): HoursHandler {
++function canonicalize(value: unknown): unknown {
++  if (Array.isArray(value)) {
++    return value.map(canonicalize);
++  }
++
++  if (value !== null && typeof value === 'object') {
++    return Object.fromEntries(
++      Object.entries(value)
++        .sort(([left], [right]) => left.localeCompare(right))
++        .map(([key, nestedValue]) => [key, canonicalize(nestedValue)]),
++    );
++  }
++
++  return value;
++}
++
++function createEtag(hours: Hours): string {
++  return `"${hash(JSON.stringify(canonicalize({ hours })))}"`;
++}
++
++function hasHoursPayload(value: unknown): value is { hours: Hours } {
++  if (
++    value === null ||
++    typeof value !== 'object' ||
++    !('hours' in value) ||
++    value.hours === null ||
++    typeof value.hours !== 'object' ||
++    Array.isArray(value.hours)
++  ) {
++    return false;
++  }
++
++  return Object.values(value.hours).every(
++    (day) =>
++      day !== null &&
++      typeof day === 'object' &&
++      !Array.isArray(day) &&
++      typeof day.opensAt === 'string' &&
++      typeof day.closesAt === 'string',
++  );
++}
++
++function matchesEtag(header: string, etag: string): boolean {
++  return header
++    .split(',')
++    .map((value) => value.trim())
++    .some((value) => value === '*' || value === etag);
++}
++
++function hoursResponse(hours: Hours): Response {
++  return Response.json(
++    { hours },
++    { headers: { ETag: createEtag(hours) }, status: 200 },
++  );
++}
++
++export function createHoursHandler(store: HoursStore): HoursHandler {
+   return {
+-    async get(_request) {
+-      return Response.json(
+-        { error: { code: 'not_implemented' } },
+-        { status: 501 },
+-      );
++    async get(request) {
++      const hours = await store.read();
++      const etag = createEtag(hours);
++      const ifNoneMatch = request.headers.get('if-none-match');
++
++      if (ifNoneMatch !== null && matchesEtag(ifNoneMatch, etag)) {
++        return new Response(null, { headers: { ETag: etag }, status: 304 });
++      }
++
++      return hoursResponse(hours);
+     },
+-    async put(_request) {
+-      return Response.json(
+-        { error: { code: 'not_implemented' } },
+-        { status: 501 },
+-      );
++    async put(request) {
++      const currentHours = await store.read();
++      const currentEtag = createEtag(currentHours);
++      const ifMatch = request.headers.get('if-match');
++
++      if (ifMatch === null) {
++        return Response.json(
++          { error: { code: 'precondition_required' } },
++          { headers: { ETag: currentEtag }, status: 428 },
++        );
++      }
++
++      if (!matchesEtag(ifMatch, currentEtag)) {
++        return Response.json(
++          { error: { code: 'precondition_failed' } },
++          { headers: { ETag: currentEtag }, status: 412 },
++        );
++      }
++
++      const body: unknown = await request.json().catch(() => null);
++
++      if (!hasHoursPayload(body)) {
++        return Response.json(
++          { error: { code: 'invalid_hours' } },
++          { status: 400 },
++        );
++      }
++
++      await store.write(body.hours);
++      return hoursResponse(body.hours);
+     },
+   };
+ }

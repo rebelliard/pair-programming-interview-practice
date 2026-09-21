@@ -1,0 +1,190 @@
+diff --git a/src/profiles/profiles-route.ts b/src/profiles/profiles-route.ts
+--- a/src/profiles/profiles-route.ts
++++ b/src/profiles/profiles-route.ts
+@@ -1,15 +1,75 @@
+ import { createProfileStore, type ProfileStore } from "./profile-store";
+-import type { RouteHandler } from "./types";
++import type { Profile, RouteHandler } from "./types";
+ 
+ type ProfileRoute = {
+   GET: RouteHandler;
+   PATCH: RouteHandler;
++  OPTIONS: RouteHandler;
+ };
+ 
++const mergePatchMediaType = "application/merge-patch+json";
++
+ function json(body: unknown, status = 200): Response {
+   return Response.json(body, { status });
+ }
+ 
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null && !Array.isArray(value);
++}
++
++function mergePatch(target: unknown, patch: unknown): unknown {
++  if (!isRecord(patch)) {
++    return structuredClone(patch);
++  }
++
++  const result = isRecord(target) ? structuredClone(target) : {};
++
++  for (const [key, value] of Object.entries(patch)) {
++    if (value === null) {
++      delete result[key];
++    } else {
++      result[key] = mergePatch(result[key], value);
++    }
++  }
++
++  return result;
++}
++
++function isNonEmptyString(value: unknown): value is string {
++  return typeof value === "string" && value.trim().length > 0;
++}
++
++function isProfile(value: unknown): value is Profile {
++  if (!isRecord(value)) {
++    return false;
++  }
++
++  const contact = value.contact;
++  const preferences = value.preferences;
++
++  if (
++    !isRecord(contact) ||
++    !isRecord(preferences) ||
++    !isRecord(contact.address)
++  ) {
++    return false;
++  }
++
++  return (
++    isNonEmptyString(value.id) &&
++    isNonEmptyString(value.displayName) &&
++    isNonEmptyString(contact.email) &&
++    contact.email.includes("@") &&
++    (contact.phone === undefined || typeof contact.phone === "string") &&
++    isNonEmptyString(contact.address.city) &&
++    isNonEmptyString(contact.address.country) &&
++    (preferences.theme === "light" || preferences.theme === "dark") &&
++    typeof preferences.marketingEmail === "boolean" &&
++    Array.isArray(value.tags) &&
++    value.tags.every((tag) => typeof tag === "string")
++  );
++}
++
+ export function createProfilesRoute(
+   store: ProfileStore = createProfileStore(),
+ ): ProfileRoute {
+@@ -26,6 +86,14 @@
+     },
+ 
+     async PATCH(request, { params }) {
++      const contentType = request.headers
++        .get("content-type")
++        ?.split(";")[0]
++        ?.trim();
++      if (contentType !== mergePatchMediaType) {
++        return json({ error: "unsupported_media_type" }, 415);
++      }
++
+       const { id } = await params;
+       const profile = store.get(id);
+ 
+@@ -44,11 +112,23 @@
+         return json({ error: "invalid_patch" }, 400);
+       }
+ 
+-      // Starter behavior: this only updates the first level of the document.
+-      const updated = Object.assign(profile, patch) as typeof profile;
+-      store.replace(updated);
++      const candidate = mergePatch(profile, patch);
++      if (!isProfile(candidate) || candidate.id !== id) {
++        return json({ error: "invalid_profile" }, 422);
++      }
+ 
+-      return json(updated);
++      store.replace(candidate);
++      return json(candidate);
+     },
++
++    async OPTIONS() {
++      return new Response(null, {
++        status: 204,
++        headers: {
++          allow: "GET, PATCH, OPTIONS",
++          "accept-patch": mergePatchMediaType,
++        },
++      });
++    },
+   };
+ }
+diff --git a/app/api/profiles/[id]/route.ts b/app/api/profiles/[id]/route.ts
+--- a/app/api/profiles/[id]/route.ts
++++ b/app/api/profiles/[id]/route.ts
+@@ -4,3 +4,4 @@
+ 
+ export const GET = route.GET;
+ export const PATCH = route.PATCH;
++export const OPTIONS = route.OPTIONS;
+diff --git a/test/profiles-route.test.ts b/test/profiles-route.test.ts
+--- a/test/profiles-route.test.ts
++++ b/test/profiles-route.test.ts
+@@ -25,32 +25,42 @@
+     });
+   });
+ 
+-  it("shallowly replaces a nested object", async () => {
++  it("merges a nested object without losing siblings", async () => {
+     const route = createProfilesRoute(createProfileStore());
+     const response = await route.PATCH(
+       new Request("http://test/api/profiles/pro-1", {
+         method: "PATCH",
++        headers: { "content-type": "application/merge-patch+json" },
+         body: JSON.stringify({ contact: { address: { city: "Paris" } } }),
+       }),
+       context(),
+     );
+ 
+     expect(await profileFrom(response)).toMatchObject({
+-      contact: { address: { city: "Paris" } },
++      contact: {
++        email: "ada@example.test",
++        phone: "+44 20 0000 0000",
++        address: { city: "Paris", country: "GB" },
++      },
+     });
+   });
+ 
+-  it("stores null values from a patch", async () => {
++  it("deletes null members from a patch", async () => {
+     const route = createProfilesRoute(createProfileStore());
+     const response = await route.PATCH(
+       new Request("http://test/api/profiles/pro-1", {
+         method: "PATCH",
+-        body: JSON.stringify({ preferences: null }),
++        headers: { "content-type": "application/merge-patch+json" },
++        body: JSON.stringify({ contact: { phone: null } }),
+       }),
+       context(),
+     );
+ 
+-    expect(await profileFrom(response)).toMatchObject({ preferences: null });
++    const profile = await profileFrom(response);
++    expect(profile).toMatchObject({
++      contact: { email: "ada@example.test", address: { city: "London" } },
++    });
++    expect((profile.contact as Record<string, unknown>).phone).toBeUndefined();
+   });
+ 
+   it("replaces scalar and array fields", async () => {
+@@ -58,6 +68,7 @@
+     const response = await route.PATCH(
+       new Request("http://test/api/profiles/pro-1", {
+         method: "PATCH",
++        headers: { "content-type": "application/merge-patch+json" },
+         body: JSON.stringify({
+           displayName: "Countess Ada",
+           tags: ["pioneer"],

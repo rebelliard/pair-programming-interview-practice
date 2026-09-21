@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "typecheckConfig": "for-interviewer/tsconfig.json",
+  "vitestConfig": "for-interviewer/vitest.config.ts",
+  "releases": [
+    {
+      "id": "core",
+      "label": "Release 1: conditional GET",
+      "filter": "core.acceptance"
+    },
+    {
+      "id": "extension",
+      "label": "Release 2: canonical ETags and guarded writes",
+      "filter": "extension.acceptance"
+    },
+    {
+      "id": "stretch",
+      "label": "Release 3: conditional GET lists",
+      "filter": "stretch.acceptance"
+    }
+  ],
+  "rubric": [
+    {
+      "id": "orientation",
+      "label": "Finds the HTTP and state boundaries",
+      "points": 15
+    },
+    {
+      "id": "validator-model",
+      "label": "Models a strong ETag representation",
+      "points": 20
+    },
+    {
+      "id": "core-conditional-get",
+      "label": "Implements ETag emission and a bodyless 304",
+      "points": 20
+    },
+    {
+      "id": "canonicalization",
+      "label": "Makes object key order deterministic",
+      "points": 10
+    },
+    {
+      "id": "guarded-update",
+      "label": "Protects writes with If-Match",
+      "points": 15
+    },
+    {
+      "id": "verification",
+      "label": "Verifies headers, status, and persistence",
+      "points": 10
+    },
+    {
+      "id": "communication",
+      "label": "Explains decisions and asks contract questions",
+      "points": 5
+    },
+    {
+      "id": "tool-judgment",
+      "label": "Uses tools deliberately and reviews output",
+      "points": 5
+    }
+  ],
+  "totalPoints": 100
+}

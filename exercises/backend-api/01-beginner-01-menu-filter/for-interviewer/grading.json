@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "typecheckConfig": "for-interviewer/tsconfig.json",
+  "vitestConfig": "for-interviewer/vitest.config.ts",
+  "releases": [
+    {
+      "id": "regression.acceptance",
+      "label": "Menu filter distinguishes false",
+      "filter": "regression.acceptance"
+    }
+  ],
+  "rubric": [
+    {
+      "id": "reproduction",
+      "label": "Reproduces and scopes the defect",
+      "points": 15
+    },
+    {
+      "id": "regression-test",
+      "label": "Writes a meaningful red-first regression",
+      "points": 25
+    },
+    {
+      "id": "query-semantics",
+      "label": "Distinguishes absent, true, and false",
+      "points": 30
+    },
+    {
+      "id": "focused-change",
+      "label": "Keeps the Route Handler and fix focused",
+      "points": 15
+    },
+    {
+      "id": "verification-and-explanation",
+      "label": "Verifies and explains the result",
+      "points": 15
+    }
+  ],
+  "totalPoints": 100
+}

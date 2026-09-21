@@ -1,0 +1,287 @@
+diff --git a/src/client/App.tsx b/src/client/App.tsx
+index 8a091a5..bea98ad 100644
+--- a/src/client/App.tsx
++++ b/src/client/App.tsx
+@@ -2 +2 @@ import { type FormEvent, useEffect, useState } from "react";
+-import type { Workspace } from "../shared/workspaces";
++import type { InviteErrorCode, Workspace } from "../shared/workspaces";
+@@ -3,0 +4,2 @@ import type { Api } from "./api";
++import { Alert, AlertDescription } from "./components/ui/alert";
++import { Badge } from "./components/ui/badge";
+@@ -17,0 +20,19 @@ import { cn } from "./lib/utils";
++function inviteErrorMessage(code: InviteErrorCode): string {
++  switch (code) {
++    case "invalid_email":
++      return "Enter a valid email address.";
++    case "workspace_not_found":
++      return "The workspace no longer exists.";
++    case "already_member":
++      return "This person is already a member.";
++    case "already_invited":
++      return "This email already has an invitation.";
++    case "seat_limit_reached":
++      return "No seats are available.";
++    default: {
++      const unreachable: never = code;
++      throw new Error(`Unhandled invitation error: ${unreachable}`);
++    }
++  }
++}
++
+@@ -44 +65,7 @@ function MembersTable({ members }: { members: string[] }) {
+-function InvitationsTable({ invitations }: Pick<Workspace, "invitations">) {
++function InvitationsTable({
++  invitations,
++  onAccept,
++}: {
++  invitations: Workspace["invitations"];
++  onAccept: (email: string) => void;
++}) {
+@@ -54,0 +82 @@ function InvitationsTable({ invitations }: Pick<Workspace, "invitations">) {
++              <TableHead>Action</TableHead>
+@@ -60,0 +89,8 @@ function InvitationsTable({ invitations }: Pick<Workspace, "invitations">) {
++                <TableCell>
++                  <Button
++                    type="button"
++                    onClick={() => onAccept(invitation.email)}
++                  >
++                    Accept {invitation.email}
++                  </Button>
++                </TableCell>
+@@ -70,2 +106,18 @@ function InvitationsTable({ invitations }: Pick<Workspace, "invitations">) {
+-function InviteForm() {
+-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
++function InviteForm({
++  api,
++  workspace,
++  onWorkspaceChange,
++}: {
++  api: Api;
++  workspace: Workspace;
++  onWorkspaceChange: (workspace: Workspace) => void;
++}) {
++  const [email, setEmail] = useState("");
++  const [error, setError] = useState<string | undefined>();
++  const [isPending, setIsPending] = useState(false);
++  const seatsLeft =
++    workspace.seatLimit -
++    workspace.members.length -
++    workspace.invitations.length;
++
++  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+@@ -73 +125,12 @@ function InviteForm() {
+-    // TODO: Wire this form to the workspace invitation API.
++    setIsPending(true);
++    setError(undefined);
++
++    const result = await api.inviteMember(workspace.id, email);
++    if (result.ok) {
++      onWorkspaceChange(result.workspace);
++      setEmail("");
++    } else {
++      setError(inviteErrorMessage(result.error.code));
++    }
++
++    setIsPending(false);
+@@ -81 +144,7 @@ function InviteForm() {
+-      <CardContent>
++      <CardContent className={cn("grid", "gap-4")}>
++        <Badge>{seatsLeft} seats left</Badge>
++        {error === undefined ? undefined : (
++          <Alert variant="destructive">
++            <AlertDescription>{error}</AlertDescription>
++          </Alert>
++        )}
+@@ -88 +157,8 @@ function InviteForm() {
+-            <Input id="email" name="email" type="email" />
++            <Input
++              id="email"
++              name="email"
++              type="email"
++              value={email}
++              onChange={(event) => setEmail(event.target.value)}
++              disabled={isPending || seatsLeft === 0}
++            />
+@@ -90 +166,3 @@ function InviteForm() {
+-          <Button type="submit">Send invite</Button>
++          <Button type="submit" disabled={isPending || seatsLeft === 0}>
++            Send invite
++          </Button>
+@@ -117,0 +196,11 @@ export function App({ api }: { api: Api }) {
++  async function acceptInvitation(email: string) {
++    if (workspace === undefined) {
++      return;
++    }
++
++    const result = await api.acceptInvitation(workspace.id, email);
++    if (result.ok) {
++      setWorkspace(result.workspace);
++    }
++  }
++
+@@ -124 +213,5 @@ export function App({ api }: { api: Api }) {
+-      <InviteForm />
++      <InviteForm
++        api={api}
++        workspace={workspace}
++        onWorkspaceChange={setWorkspace}
++      />
+@@ -126 +219,4 @@ export function App({ api }: { api: Api }) {
+-      <InvitationsTable invitations={workspace.invitations} />
++      <InvitationsTable
++        invitations={workspace.invitations}
++        onAccept={acceptInvitation}
++      />
+diff --git a/src/client/api.ts b/src/client/api.ts
+index c1496df..de032fb 100644
+--- a/src/client/api.ts
++++ b/src/client/api.ts
+@@ -34,0 +35,9 @@ export type InviteMemberResult =
++export type AcceptInvitationResult =
++  | { ok: true; workspace: Workspace }
++  | {
++      ok: false;
++      error: ApiError["error"] & {
++        code: "workspace_not_found" | "invitation_not_found";
++      };
++    };
++
+@@ -76,0 +86,26 @@ export function createApi(transport: Transport) {
++    async acceptInvitation(
++      workspaceId: string,
++      email: string,
++    ): Promise<AcceptInvitationResult> {
++      const response = await transport({
++        method: "POST",
++        path: `/workspaces/${workspaceId}/members`,
++        query: {},
++        headers: {},
++        body: { email },
++      });
++
++      if (response.status === 200) {
++        return {
++          ok: true,
++          workspace: (response.body as { workspace: Workspace }).workspace,
++        };
++      }
++
++      return {
++        ok: false,
++        error: (response.body as ApiError).error as ApiError["error"] & {
++          code: "workspace_not_found" | "invitation_not_found";
++        },
++      };
++    },
+diff --git a/src/server/handle.ts b/src/server/handle.ts
+index db0cf96..be1e23f 100644
+--- a/src/server/handle.ts
++++ b/src/server/handle.ts
+@@ -2,0 +3 @@ import {
++  acceptInvitationHandler,
+@@ -36,0 +38,5 @@ export async function handle(
++  const memberMatch = request.path.match(/^\/workspaces\/([^/]+)\/members$/);
++  if (request.method === "POST" && memberMatch?.[1] !== undefined) {
++    return acceptInvitationHandler(dependencies, memberMatch[1], request.body);
++  }
++
+diff --git a/src/server/handlers.ts b/src/server/handlers.ts
+index 8ef4ea7..624ac35 100644
+--- a/src/server/handlers.ts
++++ b/src/server/handlers.ts
+@@ -11 +11,5 @@ function error(
+-  code: CreateWorkspaceErrorCode | InviteErrorCode | "workspace_not_found",
++  code:
++    | CreateWorkspaceErrorCode
++    | InviteErrorCode
++    | "workspace_not_found"
++    | "invitation_not_found",
+@@ -119,0 +124,8 @@ export async function inviteMemberHandler(
++  const usedSeats = workspace.members.length + workspace.invitations.length;
++  if (usedSeats >= workspace.seatLimit) {
++    return {
++      status: 409,
++      body: error("seat_limit_reached", "No seats are available"),
++    };
++  }
++
+@@ -124,0 +137,34 @@ export async function inviteMemberHandler(
++
++export async function acceptInvitationHandler(
++  dependencies: Dependencies,
++  workspaceId: string,
++  body: unknown,
++): Promise<{ status: number; body: { workspace: Workspace } | ApiError }> {
++  const input = body as { email?: unknown };
++  const email =
++    typeof input.email === "string" ? normalizeEmail(input.email) : "";
++  const workspace = await dependencies.repository.findById(workspaceId);
++
++  if (workspace === undefined) {
++    return {
++      status: 404,
++      body: error("workspace_not_found", "Workspace not found"),
++    };
++  }
++
++  const invitationIndex = workspace.invitations.findIndex(
++    (invitation) => normalizeEmail(invitation.email) === email,
++  );
++  if (invitationIndex === -1) {
++    return {
++      status: 404,
++      body: error("invitation_not_found", "Invitation not found"),
++    };
++  }
++
++  workspace.invitations.splice(invitationIndex, 1);
++  workspace.members.push(email);
++  await dependencies.repository.save(workspace);
++
++  return { status: 200, body: { workspace } };
++}
+diff --git a/test/client/app.test.tsx b/test/client/app.test.tsx
+new file mode 100644
+index 0000000..8162345
+--- /dev/null
++++ b/test/client/app.test.tsx
+@@ -0,0 +1,39 @@
++import { cleanup, render, screen, within } from "@testing-library/react";
++import userEvent from "@testing-library/user-event";
++import { afterEach, describe, expect, it } from "vitest";
++import { App } from "../../src/client/App";
++import { createApi } from "../../src/client/api";
++import { createInMemoryTransport } from "../fixtures";
++
++afterEach(cleanup);
++
++describe("App", () => {
++  it("invites and accepts a teammate", async () => {
++    const user = userEvent.setup();
++
++    render(<App api={createApi(createInMemoryTransport())} />);
++    await screen.findByRole("cell", { name: "pending@acme.test" });
++
++    await user.type(
++      screen.getByRole("textbox", { name: "Email" }),
++      "new@acme.test",
++    );
++    await user.click(screen.getByRole("button", { name: "Send invite" }));
++
++    expect(
++      await within(
++        screen.getByRole("region", { name: "Invitations" }),
++      ).findByRole("cell", { name: "new@acme.test" }),
++    ).toBeInTheDocument();
++
++    await user.click(
++      screen.getByRole("button", { name: "Accept pending@acme.test" }),
++    );
++    expect(
++      await within(screen.getByRole("region", { name: "Members" })).findByRole(
++        "cell",
++        { name: "pending@acme.test" },
++      ),
++    ).toBeInTheDocument();
++  });
++});
